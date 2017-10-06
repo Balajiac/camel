@@ -16,6 +16,9 @@
  */
 package org.apache.camel.component.connector;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.apache.camel.Consumer;
 import org.apache.camel.DelegateEndpoint;
 import org.apache.camel.Endpoint;
@@ -24,6 +27,7 @@ import org.apache.camel.Producer;
 import org.apache.camel.api.management.ManagedAttribute;
 import org.apache.camel.api.management.ManagedResource;
 import org.apache.camel.impl.DefaultEndpoint;
+import org.apache.camel.processor.Pipeline;
 import org.apache.camel.util.ServiceHelper;
 
 @ManagedResource(description = "Managed Connector Endpoint")
@@ -44,13 +48,37 @@ public class DefaultConnectorEndpoint extends DefaultEndpoint implements Delegat
     @Override
     public Producer createProducer() throws Exception {
         Producer producer = endpoint.createProducer();
-        return new ConnectorProducer(endpoint, producer, getComponent().getBeforeProducer(), getComponent().getAfterProducer());
+
+        // use a pipeline to process before, producer, after in that order
+        List<Processor> list = new ArrayList<>();
+        if (getComponent().getBeforeProducer() != null) {
+            list.add(getComponent().getBeforeProducer());
+        }
+        list.add(producer);
+        if (getComponent().getAfterConsumer() != null) {
+            list.add(getComponent().getAfterProducer());
+        }
+
+        // create producer with the pipeline
+        Pipeline pipeline = new Pipeline(getCamelContext(), list);
+        return new ConnectorProducer(endpoint, pipeline);
     }
 
     @Override
     public Consumer createConsumer(Processor processor) throws Exception {
-        ConnectorConsumerProcessor delegate = new ConnectorConsumerProcessor(processor, getComponent().getBeforeConsumer(), getComponent().getAfterConsumer());
-        Consumer consumer = endpoint.createConsumer(delegate);
+        // use a pipeline to process before, processor, after in that order
+        List<Processor> list = new ArrayList<>();
+        if (getComponent().getBeforeConsumer() != null) {
+            list.add(getComponent().getBeforeConsumer());
+        }
+        list.add(processor);
+        if (getComponent().getAfterConsumer() != null) {
+            list.add(getComponent().getAfterConsumer());
+        }
+
+        // create consumer with the pipeline
+        Pipeline pipeline = new Pipeline(getCamelContext(), list);
+        Consumer consumer = endpoint.createConsumer(pipeline);
         configureConsumer(consumer);
         return consumer;
     }
